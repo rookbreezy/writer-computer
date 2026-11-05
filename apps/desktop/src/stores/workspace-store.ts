@@ -4,8 +4,8 @@ import type { RestoreWorkspaceResponse } from "@/lib/tauri";
 import * as tauri from "@/lib/tauri";
 import { getParentDir } from "@/lib/paths";
 import { getPreference, setPreference } from "@/lib/preferences";
-import { saveSession, loadSession } from "@/lib/session";
-import { getEditorSessionSnapshot, useEditorStore } from "@/stores/editor-store";
+import { saveSession } from "@/lib/session";
+import { createSettingsTab, getEditorSessionSnapshot, useEditorStore } from "@/stores/editor-store";
 
 export type WorkspaceChromeMode = "workspace" | "compact-file";
 
@@ -22,6 +22,7 @@ interface WorkspaceState {
   pinnedFiles: string[];
   sidebarMetadataVersion: number;
   recentWorkspaces: string[];
+  openError: string | null;
 
   openWorkspace: (path: string) => Promise<void>;
   /** Hydrate from a prefetched `RestoreWorkspaceResponse` (startup cold-path
@@ -30,6 +31,9 @@ interface WorkspaceState {
   closeWorkspace: () => Promise<void>;
   setChromeMode: (mode: WorkspaceChromeMode) => void;
   setStartupResolved: () => void;
+  hydrateStartupRecents: (paths: string[]) => void;
+  reportOpenError: (message: string) => void;
+  clearOpenError: () => void;
   refreshDirectory: (path: string) => Promise<void>;
   toggleDirectory: (path: string) => Promise<void>;
   invalidatePath: (path: string) => void;
@@ -103,14 +107,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   pinnedFiles: [],
   sidebarMetadataVersion: 0,
   recentWorkspaces: [],
+  openError: null,
 
   openWorkspace: async (path: string) => {
     // Multi-window: when this window already has a workspace, open the new
     // one in a fresh in-process window instead of replacing the current
     // workspace. Each window has its own `WorkspaceState` on the Rust side
     // so file watchers, search indexes, and session state stay isolated.
-    const prevRoot = get().root;
-    if (prevRoot && prevRoot !== path) {
+    const { root: prevRoot, chromeMode } = get();
+    if ((prevRoot && prevRoot !== path) || chromeMode === "compact-file") {
       await tauri.openWorkspaceInNewWindow(path);
       return;
     }
@@ -118,46 +123,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       return;
     }
 
-    // Clear editor state before switching
-    useEditorStore.setState({
-      openFiles: new Map(),
-      tabs: [],
-      activeTabId: null,
-      activeFilePath: null,
-    });
-
-    const info = await tauri.openWorkspace(path);
-    // Read the directory and load the session under the canonical root that
-    // Rust returned, not the raw input. Otherwise watcher events (which fire
-    // canonical paths) miss the cache key and the sidebar goes stale on
-    // aliased workspaces (e.g. `/var/...` → `/private/var/...`).
-    const [entries, recents] = await Promise.all([
-      tauri.readDirectory(info.root),
-      tauri.getRecentWorkspaces(),
-    ]);
-    set((state) =>
-      withNextWorkspaceGeneration(state, {
-        root: info.root,
-        workspaceEpoch: info.epoch,
-        chromeMode: "workspace",
-        fileCount: info.file_count,
-        isIndexing: true,
-        directoryCache: new Map([[info.root, entries]]),
-        expandedDirs: new Set(),
-        pinnedFiles: [],
-        sidebarMetadataVersion: 0,
-        recentWorkspaces: recents,
-      }),
-    );
-    void get().hydratePinnedFiles(info.root);
-
-    const session = await loadSession(info.root);
-    if (session && session.tabs.length > 0) {
-      await useEditorStore.getState().restoreSession(session.tabs, session.activeIndex);
-      return;
-    }
-
-    useEditorStore.getState().ensureLauncherTab();
+    // Keep Settings and any editor state intact until the complete bundle
+    // succeeds. Startup and manual opens share the same hydration path.
+    const bundle = await tauri.restoreWorkspace(path);
+    await get().restoreFromBundle(bundle);
   },
 
   closeWorkspace: async () => {
@@ -209,6 +178,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         pinnedFiles: [],
         sidebarMetadataVersion: 0,
         recentWorkspaces: bundle.recent_workspaces,
+        openError: null,
       }),
     );
     void get().hydratePinnedFiles(bundle.workspace.root);
@@ -245,6 +215,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setChromeMode: (mode) => set({ chromeMode: mode }),
 
   setStartupResolved: () => set({ isStartupResolved: true }),
+
+  hydrateStartupRecents: (paths) => set({ recentWorkspaces: paths }),
+
+  reportOpenError: (message) => {
+    set({ openError: message });
+    useEditorStore
+      .getState()
+      .openOrFocus((tab) => tab.location.kind === "settings", createSettingsTab);
+  },
+
+  clearOpenError: () => set((state) => (state.openError === null ? state : { openError: null })),
 
   refreshDirectory: async (path: string) => {
     const { root, workspaceGeneration } = get();

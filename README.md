@@ -12,6 +12,14 @@ markdown on your disk. Download it for macOS from
 
 In the app and in casual use it is just "Writer". It is built with Tauri v2, React, Zustand, CodeMirror, and Rust. The app keeps documents on disk, respects workspace `.gitignore` rules, supports multiple windows, renders extended markdown such as tables and Mermaid diagrams, and ships with a signed macOS release flow.
 
+## Personal fork
+
+This fork adds **Settings → Folder** at the top of Preferences. Choose one folder once; Writer persists the choice globally and reopens it after quitting and relaunching. The sidebar footer folder selector is removed. If the folder is temporarily unavailable, Settings shows the saved path, an error, **Try Again**, and **Change Folder**. Opening a different folder preserves occupied windows.
+
+With no saved folder, the existing restore-last-workspace setting uses the first available recent folder. Explicit file/folder opens from Finder or the CLI retain priority. Folder names with line breaks or outer whitespace are rejected before saving because the existing line-based config cannot preserve them.
+
+See [the network audit](docs/network-audit.md) for updater, telemetry, embedded-image and website requests. The updater still points at upstream; accepting an upstream update can replace the fork's modifications.
+
 ## Repository
 
 - `apps/desktop/` — Tauri desktop app.

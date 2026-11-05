@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+pub(crate) const DEFAULT_FOLDER_KEY: &str = "workspace.default-folder";
+
 /// A value parsed from a Ghostty-style config file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -529,6 +531,19 @@ impl Settings {
 
     /// Set a value at the global scope, writing to disk.
     pub fn set_global(&mut self, key: &str, value: ConfigValue) -> std::io::Result<()> {
+        if key == DEFAULT_FOLDER_KEY {
+            let path = value.as_str().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Folder must be a path")
+            })?;
+            // The line-based config cannot preserve these path characters.
+            // Reject before writing instead of remembering a different folder.
+            if path.trim() != path || path.contains(['\n', '\r']) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "This folder name contains a line break or outer whitespace. Rename it and choose it again.",
+                ));
+            }
+        }
         self.reload_global()?;
         let value = self.normalize_value(key, value);
         let mut current = parse_config_with_defaults(&self.global_raw, Some(&self.defaults));
@@ -1085,5 +1100,65 @@ mod tests {
             result.get("editor.line-height"),
             Some(&ConfigValue::Number(1.6))
         );
+    }
+    #[test]
+    fn default_folder_survives_a_fresh_settings_instance_and_workspace_override() {
+        let config = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let folder = workspace.path().join("Notes – Æ = # 'quoted'");
+        std::fs::create_dir(&folder).unwrap();
+        let selected = ConfigValue::String(folder.to_string_lossy().into_owned());
+        let mut settings = Settings::new(config.path().to_path_buf()).unwrap();
+        settings
+            .set_global(DEFAULT_FOLDER_KEY, selected.clone())
+            .unwrap();
+        drop(settings);
+
+        let mut relaunched = Settings::new(config.path().to_path_buf()).unwrap();
+        assert_eq!(relaunched.get(DEFAULT_FOLDER_KEY), Some(&selected));
+        std::fs::create_dir(workspace.path().join(".writer")).unwrap();
+        std::fs::write(
+            workspace.path().join(".writer/config"),
+            "workspace.default-folder = /wrong\n",
+        )
+        .unwrap();
+        relaunched.load_workspace(workspace.path());
+        assert_eq!(relaunched.get(DEFAULT_FOLDER_KEY), Some(&selected));
+        assert_eq!(relaunched.merged().get(DEFAULT_FOLDER_KEY), Some(&selected));
+        assert!(relaunched
+            .set_workspace(DEFAULT_FOLDER_KEY, ConfigValue::String("/wrong".into()))
+            .is_err());
+    }
+
+    #[test]
+    fn default_folder_rejects_lossy_paths_before_changing_disk_or_memory() {
+        let config = tempfile::tempdir().unwrap();
+        let mut settings = Settings::new(config.path().to_path_buf()).unwrap();
+        let original = ConfigValue::String("/Users/test/My Notes".into());
+        settings
+            .set_global(DEFAULT_FOLDER_KEY, original.clone())
+            .unwrap();
+        let before = std::fs::read(config.path().join("config")).unwrap();
+        for path in [
+            " /notes",
+            "/notes ",
+            "/notes\ntelemetry.enabled = true",
+            "/notes\rname",
+        ] {
+            assert_eq!(
+                settings
+                    .set_global(DEFAULT_FOLDER_KEY, ConfigValue::String(path.into()))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::InvalidInput
+            );
+            assert_eq!(std::fs::read(config.path().join("config")).unwrap(), before);
+            assert_eq!(settings.get(DEFAULT_FOLDER_KEY), Some(&original));
+        }
+        assert!(settings
+            .set_global(DEFAULT_FOLDER_KEY, ConfigValue::Bool(true))
+            .is_err());
+        let relaunched = Settings::new(config.path().to_path_buf()).unwrap();
+        assert_eq!(relaunched.get(DEFAULT_FOLDER_KEY), Some(&original));
     }
 }

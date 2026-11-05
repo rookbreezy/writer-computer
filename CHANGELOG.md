@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-05 — personal fork
+
+- Move folder selection from the sidebar footer to a Folder card at the top of Settings. The globally saved folder opens on every ordinary launch, independently of recent workspaces and the restore-last-workspace toggle. Explicit Finder/CLI opens keep their priority.
+- Make Settings accessible without an open folder. Failed restoration retains the chosen path and shows recovery controls instead of silently leaving an empty editor. Failed opens preserve current tabs, and delayed failed restores cannot clear newer backend workspaces.
+- Document desktop and website network behavior in [the network audit](docs/network-audit.md).
+
 ## 2026-10-28
 
 - The docs cover more of the app: [finding your way around a note](https://writer.computer/docs/navigate-a-note/) (the heading outline at the edge of a note, links to headings, find and replace, word counts), [tables, tasks and code](https://writer.computer/docs/tables-tasks-and-code/), [customizing the look](https://writer.computer/docs/customize-the-look/) and [the sidebar](https://writer.computer/docs/sidebar/). The keyboard shortcuts page no longer lists ⌘H, which isn't bound, and says that ⌘O is the same as ⌘P.

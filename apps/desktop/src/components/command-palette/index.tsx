@@ -31,7 +31,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { resetZoom, zoomIn, zoomOut } from "@/hooks/zoom-api";
 import { useFuzzySearch } from "./use-fuzzy-search";
 import { useGlobalRecentFiles } from "@/hooks/use-global-recent-files";
-import { openStandaloneFile } from "@/hooks/use-open-drop";
+import { openFolder, openStandaloneFile } from "@/hooks/use-open-drop";
 import { settingsKind } from "@/components/editor-area/page-kinds/settings";
 import { getFileName, getFileStem, getParentDir } from "@/lib/paths";
 import * as tauri from "@/lib/tauri";
@@ -68,7 +68,7 @@ export function CommandPalette() {
   const search = useCommandPaletteSearch();
   const setSearch = useSetCommandPaletteSearch();
   const { toggleSidebar } = useSidebar();
-  const { root, isIndexing, openWorkspace } = useWorkspace();
+  const { root, isIndexing } = useWorkspace();
   const closeWorkspace = useCloseWorkspace();
   const openFile = useOpenFile();
   const closeActiveTab = useCloseActiveTab();
@@ -114,12 +114,7 @@ export function CommandPalette() {
   async function handleOpenWorkspace() {
     const picked = await tauri.pickWorkspace();
     if (picked) {
-      // Standalone compact windows stay pure — workspaces open elsewhere.
-      if (isCompactFileMode) {
-        await tauri.openWorkspaceInNewWindow(picked);
-      } else {
-        await openWorkspace(picked);
-      }
+      await openFolder(picked);
     }
     close();
   }

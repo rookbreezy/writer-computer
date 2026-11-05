@@ -38,6 +38,10 @@ export function useWorkspaceRoot() {
   return useWorkspaceStore((s) => s.root);
 }
 
+export function useFolderOpenError() {
+  return useWorkspaceStore((s) => s.openError);
+}
+
 export function useWorkspaceGeneration() {
   return useWorkspaceStore((s) => s.workspaceGeneration);
 }

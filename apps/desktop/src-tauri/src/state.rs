@@ -202,8 +202,27 @@ impl WorkspaceState {
         &self,
         expected_root: &Path,
     ) -> Result<WorkspaceRuntimeDrop, ()> {
+        self.clear_workspace_matching(expected_root, None)
+    }
+
+    pub(crate) fn clear_workspace_snapshot(
+        &self,
+        expected_root: &Path,
+        expected_epoch: u64,
+    ) -> Result<WorkspaceRuntimeDrop, ()> {
+        self.clear_workspace_matching(expected_root, Some(expected_epoch))
+    }
+
+    fn clear_workspace_matching(
+        &self,
+        expected_root: &Path,
+        expected_epoch: Option<u64>,
+    ) -> Result<WorkspaceRuntimeDrop, ()> {
         let mut root_guard = self.workspace_root.write();
-        if root_guard.as_deref() != Some(expected_root) {
+        if root_guard.as_deref() != Some(expected_root)
+            || expected_epoch
+                .is_some_and(|epoch| self.workspace_epoch.load(Ordering::SeqCst) != epoch)
+        {
             return Err(());
         }
 
@@ -669,5 +688,28 @@ mod tests {
             state.workspace_snapshot().map(|(root, _)| root),
             Some(second_root)
         );
+    }
+    #[test]
+    fn failed_restore_cleanup_rejects_newer_roots_and_same_root_epochs() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let first = first.path().to_path_buf();
+        let second = second.path().to_path_buf();
+        let state = WorkspaceState::default();
+        let (old_epoch, _, _) = state.transition_to_workspace(first.clone());
+        state.transition_to_workspace(second.clone());
+        assert!(state.clear_workspace_snapshot(&first, old_epoch).is_err());
+        assert_eq!(state.workspace_snapshot().unwrap().0, second);
+        let (new_epoch, _, _) = state.transition_to_workspace(first.clone());
+        assert!(state.clear_workspace_snapshot(&first, old_epoch).is_err());
+        assert_eq!(
+            state.workspace_snapshot().unwrap(),
+            (first.clone(), new_epoch)
+        );
+        let cancel = state.cancel_index.read().clone();
+        state.clear_workspace_snapshot(&first, new_epoch).unwrap();
+        assert!(state.workspace_snapshot().is_none());
+        assert!(cancel.load(Ordering::SeqCst));
+        assert!(state.workspace_ignore.read().is_none());
     }
 }

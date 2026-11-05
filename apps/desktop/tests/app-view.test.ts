@@ -2,6 +2,11 @@ import { describe, expect, test } from "vite-plus/test";
 import { resolveAppView } from "../src/lib/app-view";
 
 describe("resolveAppView", () => {
+  test("renders Settings without a workspace and returns to welcome when closed", () => {
+    expect(resolveAppView(null, "workspace", "settings")).toBe("workspace-editor");
+    expect(resolveAppView(null, "workspace", undefined)).toBe("workspace-welcome");
+    expect(resolveAppView(null, "compact-file", "settings")).toBe("compact-file");
+  });
   test("keeps the workspace shell and welcome content when no workspace is open", () => {
     expect(resolveAppView(null, "workspace")).toBe("workspace-welcome");
   });

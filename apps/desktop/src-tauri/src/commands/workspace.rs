@@ -609,7 +609,33 @@ pub(crate) async fn build_restore_bundle(
     // happen synchronously up front so the parallel reads below see
     // consistent state.
     let workspace = prepare_workspace_state(app, label, path)?;
+    let root = PathBuf::from(&workspace.root);
+    let epoch = workspace.epoch;
+    let result = read_restore_bundle(app, label, workspace).await;
+    if result.is_err() {
+        let state = app.state::<AppState>().get_or_create(label);
+        if let Ok(runtime) = state.clear_workspace_snapshot(&root, epoch) {
+            drop_workspace_runtime_off_thread(runtime);
+        }
+    }
+    result
+}
 
+fn restore_session_enabled(state: &WorkspaceState) -> bool {
+    state
+        .settings
+        .read()
+        .as_ref()
+        .and_then(|settings| settings.get("workspace.restore-open-files"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(true)
+}
+
+async fn read_restore_bundle(
+    app: &tauri::AppHandle,
+    label: &str,
+    workspace: WorkspaceInfo,
+) -> Result<RestoreWorkspaceResponse, AppError> {
     // Use the canonical root for every downstream read. `read_directory_impl`
     // returns child entry paths prefixed with whatever string it was given,
     // and the frontend keys its `directoryCache` / `expandedDirs` by exact
@@ -637,7 +663,15 @@ pub(crate) async fn build_restore_bundle(
     let session_handle = {
         let app = app.clone();
         let root = canonical_root.clone();
-        tauri::async_runtime::spawn_blocking(move || load_session_impl(&app, &root))
+        let state = app.state::<AppState>().get_or_create(label);
+        let restore_session = restore_session_enabled(&state);
+        tauri::async_runtime::spawn_blocking(move || {
+            if restore_session {
+                load_session_impl(&app, &root)
+            } else {
+                Ok(None)
+            }
+        })
     };
 
     let entries = entries_handle
@@ -1288,5 +1322,35 @@ mod tests {
         // If `raw` doesn't start with `/private`, the test target isn't on
         // an aliased filesystem; fall through silently rather than skip — the
         // round-trip test above still covers the non-aliased case.
+    }
+    #[test]
+    fn restore_bundle_respects_the_workspace_restore_open_files_setting() {
+        let config = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let state = WorkspaceState::default();
+        let mut settings = crate::config::Settings::new(config.path().to_path_buf()).unwrap();
+        settings
+            .set_global(
+                "workspace.restore-open-files",
+                crate::config::ConfigValue::Bool(false),
+            )
+            .unwrap();
+        // Simulate relaunch as well as a workspace-specific override.
+        let settings = crate::config::Settings::new(config.path().to_path_buf()).unwrap();
+        *state.settings.write() = Some(settings);
+        assert!(!restore_session_enabled(&state));
+        std::fs::create_dir(workspace.path().join(".writer")).unwrap();
+        std::fs::write(
+            workspace.path().join(".writer/config"),
+            "workspace.restore-open-files = true\n",
+        )
+        .unwrap();
+        state
+            .settings
+            .write()
+            .as_mut()
+            .unwrap()
+            .load_workspace(workspace.path());
+        assert!(restore_session_enabled(&state));
     }
 }

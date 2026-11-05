@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useEditorStore } from "@/stores/editor-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { mark } from "@/lib/startup-metrics";
+import { SETTINGS_SCHEMA } from "@/lib/settings-schema";
 import type { PendingOpenPayload } from "@/lib/tauri";
 import type { FileContent } from "@/types/fs";
 import * as tauri from "@/lib/tauri";
@@ -79,6 +80,27 @@ function queueOpenPayload(payload: PendingOpenPayload) {
   });
 }
 
+/** Settings and runtime opens share one lane, including the existing policy
+ * that preserves occupied workspace and standalone-file windows. */
+export async function openFolder(path: string, file: string | null = null) {
+  await queueOpenPayload({ workspace: path, file });
+  useWorkspaceStore.getState().clearOpenError();
+}
+
+export async function applyStartupState(startup: tauri.StartupState) {
+  useSettingsStore.getState().hydrateFromBackend({ settings: startup.settings });
+  useWorkspaceStore.getState().hydrateStartupRecents(startup.recent_workspaces);
+
+  if (startup.standalone_file) {
+    await openStandaloneFile(startup.standalone_file.path, startup.standalone_file);
+  } else if (startup.restore_bundle) {
+    await useWorkspaceStore.getState().restoreFromBundle(startup.restore_bundle);
+  }
+  if (startup.restore_error) {
+    useWorkspaceStore.getState().reportOpenError(startup.restore_error);
+  }
+}
+
 export function createPendingOpenDrainer(
   takePendingOpen: () => Promise<PendingOpenPayload | null>,
   consumePendingOpen: (payload: PendingOpenPayload) => Promise<void>,
@@ -130,21 +152,15 @@ async function resolveStartup() {
     const startup = await tauri.getStartupState();
     mark("ipc:get_startup_state:end");
 
-    useSettingsStore.getState().hydrateFromBackend({
-      settings: startup.settings,
-    });
-
-    useWorkspaceStore.setState({
-      recentWorkspaces: startup.recent_workspaces,
-    });
-
-    if (startup.standalone_file) {
-      await openStandaloneFile(startup.standalone_file.path, startup.standalone_file);
-    } else if (startup.restore_bundle) {
-      await useWorkspaceStore.getState().restoreFromBundle(startup.restore_bundle);
-    }
+    await applyStartupState(startup);
   } catch (error) {
     console.error("Failed to resolve startup state", error);
+    if (!useSettingsStore.getState().isLoaded) {
+      useSettingsStore.getState().hydrateFromBackend({
+        settings: Object.fromEntries(SETTINGS_SCHEMA.map((def) => [def.key, def.default])),
+      });
+    }
+    useWorkspaceStore.getState().reportOpenError(`Could not restore Writer: ${String(error)}`);
   }
 
   useWorkspaceStore.getState().setStartupResolved();

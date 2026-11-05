@@ -8,6 +8,7 @@ import { WelcomeScreen } from "./welcome";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { useWorkspaceChromeMode, useWorkspaceRoot } from "@/hooks/use-workspace";
 import { resolveAppView } from "@/lib/app-view";
+import { useActiveTab } from "@/hooks/use-tabs";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -16,7 +17,8 @@ function clampSidebarWidth(width: number, maxSidebarWidth: number) {
 export function AppLayout() {
   const root = useWorkspaceRoot();
   const chromeMode = useWorkspaceChromeMode();
-  const appView = resolveAppView(root, chromeMode);
+  const activeTab = useActiveTab();
+  const appView = resolveAppView(root, chromeMode, activeTab?.location.kind);
   if (appView === "compact-file") {
     return <CompactFileLayout />;
   }

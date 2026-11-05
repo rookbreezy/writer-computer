@@ -71,10 +71,15 @@ describe("workspace-store", () => {
 
   test("openWorkspace sets root and loads entries", async () => {
     mockedInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "open_workspace") return { root: "/test", name: "test", file_count: 2 };
-      if (cmd === "read_directory")
-        return [{ name: "hello.md", path: "/test/hello.md", is_dir: false }];
-      if (cmd === "get_recent_workspaces") return ["/test"];
+      if (cmd === "restore_workspace")
+        return {
+          workspace: { root: "/test", name: "test", file_count: 2 },
+          entries: [{ name: "hello.md", path: "/test/hello.md", is_dir: false }],
+          recent_workspaces: ["/test"],
+          session: null,
+          active_file: null,
+          open_file: null,
+        };
       return null;
     });
 

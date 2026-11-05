@@ -3,6 +3,7 @@ import { useAllSettings, useResetSetting, useSetSetting } from "@/hooks/use-sett
 import { SETTINGS_SCHEMA, type SettingDef } from "@/lib/settings-schema";
 import { SettingControl } from "./setting-control";
 import { ThemesSection } from "./themes-section";
+import { FolderSection } from "./folder-section";
 import { EditorScrollContainer } from "@/components/editor-area/editor-scroll-container";
 
 /** Section that renders above the Themes block. The schema-driven section
@@ -19,7 +20,7 @@ export function SettingsPanel({ isActive }: { isActive: boolean }) {
     const map = new Map<string, SettingDef[]>();
     for (const def of SETTINGS_SCHEMA) {
       // Theme settings are owned by ThemesSection; keep them out of the generic renderer.
-      if (def.category === "Theme") continue;
+      if (def.category === "Theme" || def.category === "Folder") continue;
       const existing = map.get(def.category) ?? [];
       existing.push(def);
       map.set(def.category, existing);
@@ -28,7 +29,7 @@ export function SettingsPanel({ isActive }: { isActive: boolean }) {
   }, []);
 
   function isModified(def: SettingDef): boolean {
-    return JSON.stringify(settings[def.key]) !== JSON.stringify(def.default);
+    return JSON.stringify(settings[def.key] ?? def.default) !== JSON.stringify(def.default);
   }
 
   function renderSection(category: string, defs: SettingDef[]) {
@@ -43,7 +44,7 @@ export function SettingsPanel({ isActive }: { isActive: boolean }) {
             >
               <SettingControl
                 def={def}
-                value={settings[def.key]}
+                value={settings[def.key] ?? def.default}
                 onChange={(value) => setSetting(def.key, value)}
                 onReset={() => void resetSetting(def.key)}
                 isModified={isModified(def)}
@@ -75,6 +76,8 @@ export function SettingsPanel({ isActive }: { isActive: boolean }) {
       <EditorScrollContainer>
         <div className="mx-auto max-w-2xl px-8 pt-32 pb-24 md:pt-[9rem]">
           <h1 className="mb-10 text-2xl font-semibold text-[var(--text-primary)]">Preferences</h1>
+
+          <FolderSection />
 
           {beforeThemes.map(([cat, defs]) => renderSection(cat, defs))}
 

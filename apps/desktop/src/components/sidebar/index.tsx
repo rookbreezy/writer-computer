@@ -1,5 +1,4 @@
 import { FileBrowser } from "./file-browser";
-import { WorkspaceSwitcher } from "./workspace-switcher";
 import { useWorkspaceGeneration } from "@/hooks/use-workspace";
 import { useSidebarSurface } from "./use-sidebar-surface";
 
@@ -39,9 +38,6 @@ function SidebarSurface() {
             everythingCollapsed={surface.tree.everythingCollapsed}
             onEverythingCollapsedChange={surface.tree.onEverythingCollapsedChange}
           />
-        </div>
-        <div data-sidebar-surface-bottom className="shrink-0 px-3 py-3">
-          <WorkspaceSwitcher />
         </div>
       </div>
     </div>

@@ -2,6 +2,15 @@
   "$comment": "Settings contract: keys, types, defaults, labels, descriptions, and CSS-var bindings. Read by Rust (apps/desktop/src-tauri/src/config.rs) via include_str! and by the frontend via a static import (lib/settings-schema.ts). Theme preset *values* are not part of the contract — they live in shared/themes/*.json, one file per preset. Per docs/consolidation.md: do not declare defaults, labels, or types anywhere else.",
   "settings": [
     {
+      "key": "workspace.default-folder",
+      "label": "Folder",
+      "description": "Choose one folder for your notes. Writer remembers it and opens it every time you launch the app.",
+      "category": "Folder",
+      "type": "string",
+      "scope": "global",
+      "default": ""
+    },
+    {
       "key": "editor.font-size",
       "label": "Font Size",
       "description": "Font size in pixels for the editor",
@@ -357,7 +366,7 @@
     {
       "key": "window.restore-workspace",
       "label": "Restore Workspace",
-      "description": "Automatically reopen the last workspace when the app starts",
+      "description": "Reopen the last workspace on launch when no folder is selected in Settings",
       "category": "Window",
       "type": "boolean",
       "default": true

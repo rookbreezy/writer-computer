@@ -278,6 +278,7 @@ export interface StartupState {
    *  Mutually exclusive with `restore_bundle`; the single-file watcher is
    *  already running by the time this returns. */
   standalone_file: FileContent | null;
+  restore_error: string | null;
 }
 
 export function getStartupState(): Promise<StartupState> {

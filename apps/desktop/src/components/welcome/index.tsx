@@ -1,14 +1,12 @@
-import { useWorkspace } from "@/hooks/use-workspace";
+import { openFolder } from "@/hooks/use-open-drop";
 import * as tauri from "@/lib/tauri";
 import { getParentDir } from "@/lib/paths";
 
 export function WelcomeScreen() {
-  const { openWorkspace } = useWorkspace();
-
   async function handleAddLocation() {
     const picked = await tauri.pickWorkspace();
     if (picked) {
-      await openWorkspace(picked);
+      await openFolder(picked);
     }
   }
 
@@ -16,8 +14,7 @@ export function WelcomeScreen() {
     const picked = await tauri.pickFile();
     if (!picked) return;
     const dir = getParentDir(picked);
-    await openWorkspace(dir);
-    await import("@/stores/editor-store").then((m) => m.useEditorStore.getState().openFile(picked));
+    await openFolder(dir, picked);
   }
 
   return (
